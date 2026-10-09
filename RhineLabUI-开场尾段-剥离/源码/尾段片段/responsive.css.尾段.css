@@ -1,0 +1,13 @@
+// 尾段片段：src/responsive.css
+// 起止 = 上游原文件行号；上游 /home/xuan/设计/RhineLabUI（HEAD 12cc5e4）
+// 尾段窗口 f457–f673（原片 18.28–26.92 s）
+
+──── src/responsive.css:5-12  ★ 尾段生效 ★开场版式：二维层固定 1920×1080 局部坐标，白场按 --opening-* 缩放，竖屏文案放大
+[data-layout="opening"] .boot { inset: auto; left: calc(50% - 960px); top: calc(50% - 540px); width: 1920px; height: 1080px; }
+[data-layout="opening"] .boot-white { left: calc((1920px - var(--opening-width)) / 2); top: calc((1080px - var(--opening-height)) / 2); width: var(--opening-width); height: var(--opening-height); right: auto; bottom: auto; }
+[data-layout="opening"] .scan { transform: scale(var(--opening-scan-scale)); transform-origin: center; }
+[data-layout="opening"][data-opening-portrait="true"] :is(.access-text, .auth-status) { font-size: 36px; }
+[data-layout="opening"][data-opening-portrait="true"] .scan > span { font-size: 52px !important; letter-spacing: 1px !important; }
+[data-layout="opening"] .archive-callout { left: 50.520833%; width: 49.479167%; }
+[data-layout="opening"] .file-title { font-size: clamp(22px, 2vw, 32px); }
+[data-mobile-boot="true"] [data-layout="opening"] .powered { left: var(--edge); right: auto; bottom: 50px; }

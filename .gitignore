@@ -1,0 +1,23 @@
+# ── 依赖 ──────────────────────────────
+node_modules/
+
+# ── 独立上游仓库，不纳入本仓库管理 ─────
+#（clone 自 github.com/LBEILC/RhineLabUI，自带 remote 与历史）
+RhineLabUI/
+
+# ── Python ───────────────────────────
+__pycache__/
+*.pyc
+
+# ── 构建缓存 / 产物 ───────────────────
+.vite/
+dist/
+.cache/
+
+# ── OS / 编辑器 ───────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+/* ═══════════ 纯色设计：无渐变底板、无网格、无暗角 ═══════════ */
+:root{
+  --bg:{{BG}};
+  --ink:{{INK}};
+  /* 舞台宽，与 .stage 的 width 保持一致。
+     位移量写成 calc(var(--stage) * n)，窗口缩放时自动跟着变，
+     不需要 JS 测量，也不会留下过期像素值。 */
+  --stage:min(100vw,177.78vh);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+/* Cal Sans（Google Fonts，latin 子集）内联成 data URI：file:// 下不能有外部请求 */
+@font-face{
+  font-family:'Cal Sans';
+  font-style:normal;
+  font-weight:400;
+  font-display:block;
+  src:url({{FONT_DATA_URI}}) format('woff2');
+}
+html,body{
+  width:100%;height:100%;background:var(--bg);overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+.stage{
+  position:relative;overflow:hidden;
+  width:min(100vw,177.78vh);
+  height:min(56.25vw,100vh);
+  background:var(--bg);
+}
+
+/* ── 头像区 ──
+   头像从屏幕正中出发，再由 JS 按原片 leftEdge 轨迹左移到版位。
+   所以这里必须占满整屏居中，而不是一开始就蹲在左半边。 */
+.portrait-zone{position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;z-index:10}
+/* 46.44% = 原设计的 54% × 86%，左移到版位后尺寸与之前完全一致 */
+.portrait-wrap{position:relative;width:46.44%;aspect-ratio:1;will-change:transform}
+#glitch{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+/* ═══════════ 文字：严格黑底白字 / 白底黑字 ═══════════ */
+/* 文字区左边界 47.5%：人像左移到位后右边缘在 46.8%，
+   两者靠在一起。旧值 55.5% 是为中间那根中分线留的位置，线删了就该收回来。 */
+.text-zone{position:absolute;left:47.5%;right:0;top:0;bottom:0;z-index:14;
+  display:flex;flex-direction:column;justify-content:center;padding:0 4.5% 0 4%}
+
+.word{font-family:'Cal Sans','Chakra Petch',sans-serif;font-weight:400;
+  white-space:nowrap;line-height:1;color:var(--ink);
+  /* 初始不可见：由 JS 按原片 brand 轨迹滑入 */
+  opacity:0;will-change:opacity,transform;
+  /* 强制灰度抗锯齿：Chromium 对小字号/深色字默认用 LCD 亚像素抗锯齿，
+     实测会在文字边缘留下彩色像素，破坏「只有黑白」这条硬约束。 */
+  -webkit-font-smoothing:antialiased}
+#w-wensi{font-size:clamp(54px,9.6vw,124px);letter-spacing:.005em}
+
+/* AUTOMATION：黑底白字（去掉了原来的白底实心条）
+   原来 #w-auto 带 .66em 左内边距，是给白条留的边。
+   现在没有条了，这个内边距会把第二行推得比第一行靠右——
+   必须一并去掉，两行才是真正的左端对齐。 */
+#w-auto{margin-top:.62em;font-size:clamp(20px,3.3vw,44px);font-weight:400;
+  letter-spacing:.17em;line-height:1}
+
+</style>
+</head>
+<body>
+<div class="stage" id="stage">
+  <div class="portrait-zone" id="pzone">
+    <div class="portrait-wrap" id="pwrap">
+      <canvas id="glitch" width="900" height="900"></canvas>
+    </div>
+  </div>
+
+  <div class="text-zone">
+    <div class="word" id="w-wensi">WENSI</div>
+    <div class="word" id="w-auto">AUTOMATION</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ══════════════════════════════════════════════════════════════════════
+   WENSI AUTOMATION · 故障艺术开场 · 模式 {{MODE}}
+   25FPS 共享时间轴 · 确定性故障 · 单文件自包含
+
+   ── 画面语言 ──────────────────────────────────────────────────────────
+   底图是连续灰阶（柔和的晕染被完整保留），而「梯度色块」不作为底图风格，
+   而作为一种故障样式出现 —— 需要时整幅或局部切成分层色阶。
+   全片只有一轮故障：突发、持续 2~5 帧、随后画面完全干净。
+   参考真实信号故障特征：条带高度不均匀、只有少数条带动、位移在多帧内保持。
+
+   ── 性能架构 ──────────────────────────────────────────────────────────
+   所有逐像素运算（像素排序 / 色阶断层 / 通道分离 / 反相）在加载时一次性
+   预渲染成离屏 canvas；运行时只做 drawImage 合成，每帧开销恒定且极低。
+   ══════════════════════════════════════════════════════════════════════ */
+
+const FPS = 25;
+/* 图像以 data URI 内联。用相对路径的话，file:// 双击打开时
+   drawImage 会污染画布 → getImageData 抛 SecurityError →
+   onload 中断，页面永久黑屏。内联后无此问题。 */
+const IMG = '{{IMAGE_DATA_URI}}';
+const FACE_MASK = '{{FACE_MASK_DATA_URI}}';
+/* 画布分辨率按人像区的实际显示尺寸取，避免「720 位图铺在 891 CSS px 上」
+   造成的 1.24 倍上采样（线条发虚）。上限 900 是为了把加载期的
+   四边泛洪 + 变体预渲染控制在 ~0.4s 内。 */
+const SZ = (() => {
+  const stageW = Math.min(window.innerWidth, window.innerHeight * 177.78 / 100);
+  const cssW = stageW * 0.4644;      // 人像占舞台宽 46.44%，同 .portrait-wrap
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  /* 上限提到源图分辨率 1254。原来卡在 900，源图 1254 先被缩到 774，
+     头发里那些细碎的水彩斑块在缩放时就磨掉了 —— 参考图的「邻像素差」
+     是 0.67，卡在 900 时只有 0.51。1:1 取样可以把细节留住。
+     代价是加载期的逐像素处理变重（像素数 2.6 倍），实测仍在可接受范围。 */
+  return Math.max(640, Math.min(1254, Math.round(cssW * dpr)));
+})();
+/* 6×8 → 12×16：用户要求「故障块的体积小一点」。
+   方块面积变为原来的 1/4，闪烁时读起来是细碎的像素块，
+   而不是四大块拼图。拼装顺序用归一化的 REV_POS，不受网格密度影响。 */
+const COLS = 12, ROWS = 16, NCELL = COLS * ROWS;
+const CW = SZ / COLS, CH = SZ / ROWS;
+const NP = SZ * SZ;
+/* 面部掩膜：来自 SVG 的 face 组剪影（构建期光栅化内联）。
+   判面部不能用「亮度>=248.5 的泛洪」——源图的脸自带纵向渐变，
+   只有 45% 的脸像素达标，半张脸会被当成头发，脸上就出现对角渐变。 */
+const FACEM = new Uint8Array(NP);
+let faceMaskReady = false;
+
+/* ── 确定性伪随机：同一帧永远得到同一结果（禁止 Math.random） ──
+   必须用 Math.imul 把中间量锁在 int32。
+   写成 n*(n*n*15731+789221) 这种 C 风格整数哈希，n 稍大就突破
+   IEEE754 双精度 2^53 的精确整数范围、低位被清零，
+   实测 n≥5000 时 100% 返回 0 —— 条带高度会全部退化成等分 8px、
+   区块重排全部落在同一格，整个故障引擎表面在跑、实际什么都没做。   */
+function hash(n){
+  n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+  n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+  n = n ^ (n >>> 16);
+  return (n >>> 0) / 4294967296;
+}
+const clamp01 = p => p < 0 ? 0 : p > 1 ? 1 : p;
+const smooth  = p => p * p * (3 - 2 * p);
+const prog    = (f, a, b) => smooth(clamp01((f - a) / (b - a)));
+
+/* ══ 单调三次 Hermite 插值（取自 RhineLabUI boot-tracks.ts）════════
+   逐段缓动会让运动在每个关键帧上「停一下」；这条曲线在整个区间上速度
+   连续，实测这才是原片丝滑感的来源。
+   keys 必须按帧号升序，形如 [[帧, 值], …]。 */
+function track(keys, frame){
+  if (frame <= keys[0][0]) return keys[0][1];
+  const last = keys.length - 1;
+  if (frame >= keys[last][0]) return keys[last][1];
+  const slope = i => (keys[i+1][1] - keys[i][1]) / (keys[i+1][0] - keys[i][0]);
+  const tangent = i => {
+    if (i === 0) return slope(0);
+    if (i === last) return slope(last - 1);
+    const a = slope(i - 1), b = slope(i);
+    if (a * b <= 0) return 0;          // 极值点：切线归零，避免过冲
+    const h0 = keys[i][0] - keys[i-1][0], h1 = keys[i+1][0] - keys[i][0];
+    const w0 = 2 * h1 + h0, w1 = h1 + 2 * h0;
+    return (w0 + w1) / (w0 / a + w1 / b);
+  };
+  let i = 0;
+  while (frame > keys[i+1][0]) i++;
+  const h = keys[i+1][0] - keys[i][0], p = (frame - keys[i][0]) / h;
+  return (2*p*p*p - 3*p*p + 1) * keys[i][1]
+       + (p*p*p - 2*p*p + p) * h * tangent(i)
+       + (-2*p*p*p + 3*p*p) * keys[i+1][1]
+       + (p*p*p - p*p) * h * tangent(i+1);
+}
+
+/* ── 原片轨迹（归一化到 0..1）─────────────────────────────────────
+   左滑：RhineLabUI 的 leftEdge，logo 从 814 走到 518 的 34 帧。
+         慢起、中段最快、长尾减速。
+   两条曲线都从 RhineLabUI 归一化而来，原注释保留在 STATUS.md。 */
+const SLIDE_KEYS = [
+  [0,0],[1,.0034],[2,.0068],[3,.0203],[4,.0372],[5,.0676],[6,.1115],[7,.1723],
+  [8,.25],[9,.3311],[10,.4155],[11,.4932],[12,.5608],[13,.6216],[14,.6723],
+  [15,.7196],[16,.7568],[17,.7905],[18,.8209],[19,.848],[20,.8716],[21,.8919],
+  [22,.9088],[23,.9257],[24,.9392],[25,.9493],[26,.9595],[27,.9696],[28,.9764],
+  [29,.9831],[30,.9899],[31,.9932],[32,.9966],[34,1],
+];
+/* 墨比位移先到：透明度只在前 3 帧就 0→1，此时位移还在走。
+   这是原片 brand 三行的入场方式，也是「字早就在那儿、只是刚滑到位」
+   这种质感的关键。 */
+const INK_OPACITY = [[-1,0],[0,.4],[1,.65],[2,.88],[3,1]];
+
+/* ══ 离屏画布池 ══════════════════════════════════════════════════════ */
+const mk = () => { const c = document.createElement('canvas'); c.width = c.height = SZ; return c; };
+const base = mk(), bctx = base.getContext('2d');     // 成品底图（连续灰阶）
+let V = {};
+let imgReady = false;
+
+/* Cal Sans 是内联 data URI，正常情况下立刻可用；万一失败也不阻塞开场，
+   回退到 Chakra Petch 就行 —— 不能为了一款字体把整页卡死。 */
+let fontReady = false;
+(async () => {
+  try { await document.fonts.load('400 100px "Cal Sans"'); } catch (e) { /* 回退族 */ }
+  fontReady = true;
+})();
+
+const image = new Image();
+const maskImage = new Image();
+maskImage.onload = () => {
+  const mc = document.createElement('canvas'); mc.width = mc.height = SZ;
+  const mx = mc.getContext('2d');
+  mx.drawImage(maskImage, 0, 0, SZ, SZ);
+  const md = mx.getImageData(0, 0, SZ, SZ).data;
+  for (let i = 0, p = 0; p < NP; i += 4, p++) FACEM[p] = md[i] > 128 ? 1 : 0;
+  faceMaskReady = true;
+};
+maskImage.src = FACE_MASK;
+
+image.onload = () => {
+  bctx.drawImage(image, 0, 0, SZ, SZ);
+  const id = bctx.getImageData(0, 0, SZ, SZ);
+  const d = id.data;
+
+  /* ── 1. 标记纯白像素 ──
+     源图里「外部背景」与「面部」都是纯白，亮度上完全分不开。
+     注意：white 只用来跑泛洪标出外部背景，不再直接参与挖空 ——
+     头发里的浅色区域也是高亮度，用它挖空会在发块上开洞。 */
+  const white = new Uint8Array(NP);
+  for (let i = 0, p = 0; p < NP; i += 4, p++)
+    white[p] = ((d[i] + d[i+1] + d[i+2]) / 3 >= 248.5) ? 1 : 0;
+
+  /* ── 2. 四边泛洪 → 标出真正的外部背景；剩下的白即被发丝围合的面部 ── */
+  const outside = new Uint8Array(NP);
+  const stack = new Int32Array(NP);
+  let sp = 0;
+  const seed = p => { if (white[p] && !outside[p]){ outside[p] = 1; stack[sp++] = p; } };
+  for (let x = 0; x < SZ; x++){ seed(x); seed((SZ - 1) * SZ + x); }
+  for (let y = 0; y < SZ; y++){ seed(y * SZ); seed(y * SZ + SZ - 1); }
+  while (sp > 0){
+    const p = stack[--sp], x = p % SZ, y = (p - x) / SZ;
+    if (x > 0)      seed(p - 1);
+    if (x < SZ - 1) seed(p + 1);
+    if (y > 0)      seed(p - SZ);
+    if (y < SZ - 1) seed(p + SZ);
+  }
+
+  /* ── 3. 成像 ──
+     反相 + 色阶拉伸：源图的亮度全挤在 137..255 这条窄带里，
+     不拉伸就什么都看不见。拉伸后把线条与晕染完整保留成连续灰阶。 */
+  for (let i = 0, p = 0; p < NP; i += 4, p++){
+    const r = d[i], g = d[i+1], b = d[i+2];
+
+    if (r - (g + b) * 0.5 > 25){                       // 红发夹：色度判别（对灰度免疫）
+      {{CLIP_RGB}}
+      continue;
+    }
+    /* ── 面部完全留白 ──
+       参考图里头像的脸里什么都没有，是一块纯黑的负形：
+       只有一条细青线勾出额头→鼻→唇→下巴，脸内部不填任何墨。
+       【坑】旧条件写的是 `FACEM[p] || white[p]`，white = 亮度≥248.5，
+       而头发里有浅色区域——那些像素被一并挖空，头发里凭空
+       多了好几块黑洞（实测最大 xx296~495 y284~584，19774px）。
+       FACEM 现在已经是真正的侧脸掩膜，挖空只能由它决定。 */
+    if (FACEM[p]){ d[i+3] = 0; continue; }
+    if (outside[p]){ d[i+3] = 0; continue; }           // 外部背景 → 透明
+
+    /* ── 亮度上限 232 ──
+       源图里头发最亮到 229，脸与背景都是 255。前面已经把脸和
+       外部背景挖掉了，在剩下的像素里，亮度 > 232 只可能是
+       「发块里的一块浅色填涂」——按反相映射它会落到最暗的一档，
+       在头发里看就是一个洞（实测绿 38~43，而周围是 53~57）。
+       用户要求把它填成和周围同一个色号，所以这里把亮度截断在 232：
+       detail=0.279 → 量化到第 1 档 → 绿 53，正好是周围的色号。 */
+    const lum = Math.min(232, (r + g + b) / 3);
+    const detail = Math.pow(clamp01((255 - lum) / 118), 0.78);
+    /* ── 发块的色阶 ──
+       参考图的头发不是一条连续渐变，而是几个离散色阶：
+       浅色的高光带 + 中调 + 暗块，量出来大约落在绿 50/70/90/110/130。
+       所以先把 detail 量化到 6 档再映射到 0.20~0.76，
+       得到绿 34 / 53 / 73 / 92 / 111 / 131 —— 顶部那一档就是「浅色」。 */
+    const v = 0.20 + 0.56 * (Math.round(detail * 5) / 5);
+
+    if (v < 0.015){ d[i+3] = 0; continue; }
+    /* 横向扫描线：参考产物里头像质感的一部分，实测周期 3px、
+       逐相位相对亮度 [1.058, 1.057, 0.885]，峰谷差 17.4%。
+       只调制 alpha 不碰颜色 —— 加色纹理在位移/叠加时容易露馅。
+       注意是在「画布像素」空间做的，画布 774px 铺在 891.6 CSS px 上，
+       所以屏幕上看是 3.46px 周期，和参考的 3px 足够接近。 */
+    const scan = ((p / SZ) | 0) % 3 === 2 ? 0.885 : 1.058;
+    {{INK_RGB}}
+    d[i+3] = Math.round(255 * Math.min(1, v * {{ALPHA_MUL}} * scan));
+  }
+  bctx.putImageData(id, 0, 0);
+
+  buildVariants();
+  imgReady = true;
+};
+
+/* ══ 预渲染故障变体 ══════════════════════════════════════════════════ */
+function buildVariants(){
+
+  /* ── 变体：未解析区块的青雾 ──
+     只压暗人像是不够的：参考图里的方块在头发之外的纯黑背景上
+     照样看得见（那是一块完整的正方形），说明它有一层均匀底色。
+     所以 = 均匀底 0.22 + 人像内容 ×0.16。
+     底太暗时方块看起来是「深灰洞」而不是参考图里的「青灰雾」。 */
+  V.ghost = mk();
+  {
+    const c = V.ghost.getContext('2d');
+    c.drawImage(base, 0, 0);
+    const im = c.getImageData(0, 0, SZ, SZ), d = im.data;
+    for (let i = 0; i < d.length; i += 4){
+      {{INK_RGB}}
+      d[i+3] = Math.round(255 * (0.22 + 0.16 * (d[i+3] / 255)));
+    }
+    c.putImageData(im, 0, 0);
+  }
+
+}
+
+/* ══ 运行时：故障合成 ════════════════════════════════════════════════ */
+const canvas = document.getElementById('glitch');
+canvas.width = canvas.height = SZ;
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+/* 区块拼装顺序：以面部为中心向外扩散 */
+const REVEAL = (() => {
+  const a = [];
+  for (let i = 0; i < NCELL; i++){
+    const cx = (i % COLS) + .5, cy = Math.floor(i / COLS) + .5;
+    const dx = cx - 4.6, dy = cy - 4.4;
+    a.push({ i, d: Math.sqrt(dx*dx + dy*dy*1.25) + hash(i * 31 + 7) * 2.6 });
+  }
+  a.sort((x, y) => x.d - y.d);
+  return a.map(o => o.i);
+})();
+const REV_POS = new Array(NCELL);
+REVEAL.forEach((ci, p) => REV_POS[ci] = p);
+const ROGUE = new Set([3, 11, 20, 34, 41, 46]);
+
+function drawPortrait(f){
+  ctx.clearRect(0, 0, SZ, SZ);
+  if (!imgReady) return;
+
+  /* ── 阶段 A：区块拼装 f<26 ── */
+  if (f < 26){
+    for (let row = 0; row < ROWS; row++){
+      for (let col = 0; col < COLS; col++){
+        const ci = row * COLS + col;
+        const at = 3 + REV_POS[ci] * 0.40;
+        if (f < at){
+          /* 未解析：铺底影而不是纯黑洞。
+             底影要随整体进度淡入、并在该块即将点亮前微微提亮，
+             否则第 0 帧整张人像就以恒定亮度浮在那里，没有「解析」的层次。 */
+          const gp = prog(f, 2, 10);
+          if (gp <= 0) continue;
+          const near = clamp01((f - (at - 7)) / 7);
+          /* 未解析区块的底影要压得很暗。这里一亮，整张脸就变成
+             「一堆浅色方块在闪」，而不是「人像从暗里慢慢浮出来」。 */
+          ctx.globalAlpha = gp * (0.07 + 0.15 * near);
+          ctx.drawImage(V.ghost, col*CW, row*CH, CW, CH, col*CW, row*CH, CW, CH);
+          ctx.globalAlpha = 1;
+          continue;
+        }
+        const age = f - at, sd = ci * 977 + 13;
+        let a = 1, dx = 0, dy = 0;
+        /* 闪烁只给一部分区块，且幅度要小。
+           原来每一块落位时都从 alpha .62 弹一下、位移 ±32px，
+           整片看过去像在抖，不是「部分区块故障闪烁」。 */
+        const flash = hash(sd + 91) < 0.28;
+        if (flash && age < 3){
+          if (age === 0){ a = .82; dx = (hash(sd) - .5) * 22; dy = (hash(sd + 1) - .5) * 6; }
+          else if (age === 1){ dx = (hash(sd + 2) - .5) * -16; }
+        }
+        if (ROGUE.has(ci) && age >= 3 && age < 40){
+          const k = Math.floor(age / 2) + ci, r1 = hash(k * 7 + 3);
+          if (r1 > .62){ dx = (hash(k * 11) - .5) * 26; a = r1 > .88 ? .68 : 1; }
+        }
+        ctx.save();
+        /* 矩形必须一格一格严丝合缝。
+           写 CW+.6 制造重叠会让重叠区被画两次、alpha 翻倍，
+           整幅图上浮出一层亮线网格。 */
+        ctx.beginPath(); ctx.rect(col*CW, row*CH, CW, CH); ctx.clip();
+        ctx.globalAlpha = a;
+        /* 全部用底图。原来每三个区块抽一个换成排序版做「拉丝」，
+           但像素排序会把亮像素挤成均匀的竖条 —— 拼装期就冒出一块块
+           平坦的浅色矩形，读起来像渲染错误而不是故障。 */
+        ctx.drawImage(base, dx, dy, SZ, SZ);
+        ctx.restore();
+      }
+    }
+    return;
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.drawImage(base, 0, 0, SZ, SZ);
+  runGlitch(f);
+}
+
+/* ══ 故障：只做「区块闪烁」一种形态 ══════════════════════════════════
+   用户明确要求：保留区块闪烁，不要整张头像闪。
+   所以切片撕裂、色差重影、垂直滚动、色阶断层、反相、扫描线噪点
+   这些「整幅画面一起变」的样式全部删除 —— 故障只以方块为单位发生，
+   方块以外的区域逐像素不动。
+
+   参考图里方块只有两种态：
+     青雾  —— 该块还没解析出来，铺一层很暗的墨（在头发之外的纯黑背景上也看得见）
+     黑洞  —— 该块直接空缺，露出黑底
+   其余方块保持正常画面。                                        */
+const G_START = 84, G_LOOP = 70, G_LEN = 11;   // 周期 2.8s、故障 0.44s（整体提速）
+
+function glitchPhase(f){
+  if (f < G_START) return null;
+  const since = f - G_START;
+  const cycle = Math.floor(since / G_LOOP);
+  const jit = Math.floor(hash(cycle * 7919 + 13) * 16);   // ±25% 抖动
+  const d = (since % G_LOOP) - jit;
+  if (d < 0 || d >= G_LEN) return null;                   // 其余时间画面完全干净
+  return { cycle, t: d / (G_LEN - 1) };
+}
+
+/* 区块闪烁。
+   hold   —— 每个状态持续几帧；块与块之间由 hash 给出各自的相位偏移，
+             所以同一时刻各块的状态是错开的，读起来是「闪烁」不是「整片一起变」。
+   pHaze  —— 这一帧有多少比例的方块参与。
+   pHole  —— 参与方块的里有多少变成黑洞（其余是青雾）。          */
+function blockFlicker(f, hold, pHaze, pHole){
+  const step = Math.floor(f / hold);
+  for (let row = 0; row < ROWS; row++){
+    for (let col = 0; col < COLS; col++){
+      const ci = row * COLS + col;
+      /* 相位偏移取整再除以 3：让每块的状态窗口错开，
+         而不是所有块共享同一个 step 边界。 */
+      const s = Math.floor(hash(ci * 131 + 7) * 24) + Math.floor(step / 3);
+      const r = hash(ci * 977 + s * 7919);
+      if (r >= pHaze) continue;
+      const x = col * CW, y = row * CH;
+      ctx.clearRect(x, y, CW, CH);
+      if (r >= pHaze * pHole){                       // 青雾（未解析）
+        ctx.drawImage(V.ghost, x, y, CW, CH, x, y, CW, CH);
+      }                                              // 否则留空 → 黑洞
+    }
+  }
+}
+
+function runGlitch(f){
+  /* 锁定期爆发 f28→40：方块更密、黑洞更多，收尾衰减到 0 */
+  if (f >= 28 && f <= 40){
+    const env = 1 - prog(f, 28, 40);
+    blockFlicker(f, 3, 0.12 + 0.34 * env, 0.46);
+    return;
+  }
+  /* 稳态：间隔 3.5s（±25% 抖动）、持续 0.56s、强度二次衰减。
+     「不要让故障持续发生」—— 故障必须打断一段正常流，
+     所以大部分时间画面必须是干净的。 */
+  const ph = glitchPhase(f);
+  if (!ph) return;
+  const e = 1 - ph.t;
+  blockFlicker(f, 3, 0.10 + 0.28 * e * e, 0.40);
+}
+
+/* ══ DOM 引用 + 写入缓存（相同值不重复写样式） ══════════════════════ */
+const $ = id => document.getElementById(id);
+const stage = $('stage'), pwrap = $('pwrap');
+const wWensi = $('w-wensi'), wAuto = $('w-auto');
+
+const cache = new WeakMap();
+function set(el, prop, val){
+  let c = cache.get(el); if (!c){ c = {}; cache.set(el, c); }
+  if (c[prop] !== val){ c[prop] = val; el.style[prop] = val; }
+}
+
+/* ══ 主时间轴 ══════════════════════════════════════════════════════ */
+let drawn = false, wasTear = false;
+
+function render(f){
+  /* 头像：稳态后不再重绘；撕裂帧及其后一帧例外，否则撕裂会残留 */
+  const tearing = (f >= 28 && f <= 40) || glitchPhase(f) !== null;
+  if (f <= 42 || tearing || wasTear || !drawn){ drawPortrait(f); drawn = true; }
+  wasTear = tearing;
+
+  /* ── 左滑：f40 起 ──────────────────────────────────────────
+     轨迹取原片 logo 的 leftEdge：慢起、中段最快、长尾减速。
+     起点是屏幕正中，终点是左侧版位，位移量 = 23% 舞台宽。
+     整条曲线从 34 帧压到 26 帧（提速 1.3×），形状不变。 */
+  const slide = track(SLIDE_KEYS, (f - 40) * (34 / 26));
+  set(pwrap, 'transform',
+      `translateX(calc(var(--stage) * ${(-0.23 * slide).toFixed(4)}))`);
+
+  /* ── 文字滑入：WENSI f54、AUTOMATION f56 ──────────────────────
+     两行错开 2 帧，同原片 brand 三行的做法。
+     曲线同样压到 22 帧（提速 1.5×）。 */
+  const inkA = track(SLIDE_KEYS, (f - 54) * (34 / 22)), opA = track(INK_OPACITY, f - 54);
+  set(wWensi, 'transform', `translateX(calc(var(--stage) * ${(0.121875 * (1 - inkA)).toFixed(4)}))`);
+  set(wWensi, 'opacity', opA.toFixed(3));
+
+  const inkB = track(SLIDE_KEYS, (f - 56) * (34 / 22)), opB = track(INK_OPACITY, f - 56);
+  set(wAuto, 'transform', `translateX(calc(var(--stage) * ${(0.121875 * (1 - inkB)).toFixed(4)}))`);
+  set(wAuto, 'opacity', opB.toFixed(3));
+}
+
+/* ══ 播放循环 ══════════════════════════════════════════════════════ */
+let acc = 0, prev = null, lastf = -1, running = true;
+
+function loop(ts){
+  if (!running) return;
+  if (prev === null) prev = ts;
+  let dt = (ts - prev) / 1000;
+  prev = ts;
+  if (dt > 0.25) dt = 0.25;          // 长时间挂起后不追赶，直接丢弃
+  acc += dt;
+
+  const f = Math.floor(acc * FPS);
+  if (f !== lastf){ render(f); lastf = f; }
+  requestAnimationFrame(loop);
+}
+
+/* ══ 重播 ══════════════════════════════════════════════════════════ */
+function reset(){
+  running = false;
+  acc = 0; prev = null; lastf = -1; drawn = false; wasTear = false;
+  set(wWensi, 'opacity', '0'); set(wWensi, 'transform', 'none');
+  set(wAuto, 'opacity', '0');  set(wAuto, 'transform', 'none');
+  set(pwrap, 'transform', 'none');
+  ctx.clearRect(0, 0, SZ, SZ);
+  running = true;
+  requestAnimationFrame(loop);
+}
+/* REPLAY 按钮已移除。重播保留能力但不再占用任何可见控件：点画面即可重播。 */
+stage.addEventListener('click', reset);
+
+/* ══ 冻帧（?f= / ?t=）用于逐帧校验；帧率计暴露到 window.__stats ═════ */
+const q = new URLSearchParams(location.search);
+const qf = q.has('f') ? parseInt(q.get('f'), 10) : null;
+const qt = q.has('t') ? parseFloat(q.get('t')) : null;
+
+window.__stats = { frames: 0, drops: 0, fps: 0, worst: 0 };
+(function meter(){
+  let last = 0; const times = [];
+  function sample(ts){
+    if (last){
+      const dt = ts - last;
+      times.push(dt);
+      if (times.length > 120) times.shift();
+      window.__stats.frames++;
+      if (dt > 1000 / FPS * 1.9) window.__stats.drops++;
+      if (dt > window.__stats.worst) window.__stats.worst = Math.round(dt);
+      window.__stats.fps = Math.round(1000 / (times.reduce((a,b)=>a+b,0) / times.length) * 10) / 10;
+    }
+    last = ts;
+    requestAnimationFrame(sample);
+  }
+  requestAnimationFrame(sample);
+})();
+
+function boot(){
+  if (!imgReady || !fontReady || !faceMaskReady){ setTimeout(boot, 40); return; }
+  if (qf !== null || qt !== null){
+    const f = qf !== null ? qf : Math.floor(qt * FPS);
+    render(f);
+    document.title = `f=${f}`;
+    return;
+  }
+  requestAnimationFrame(loop);
+}
+image.src = IMG;
+boot();
+</script>
+</body>
+</html>

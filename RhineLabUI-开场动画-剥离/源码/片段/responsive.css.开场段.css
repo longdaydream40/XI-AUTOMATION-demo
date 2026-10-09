@@ -1,0 +1,32 @@
+// 剥离自 src/responsive.css（仅开场相关行段）。行号 = 原文件行号。
+// 上游：/home/xuan/设计/RhineLabUI  src/responsive.css 共 225 行
+
+// ───── 原 src/responsive.css:5-12  开场多分辨率：opening 版式、boot / boot-white / scan 缩放、竖屏字号 ─────
+[data-layout="opening"] .boot { inset: auto; left: calc(50% - 960px); top: calc(50% - 540px); width: 1920px; height: 1080px; }
+[data-layout="opening"] .boot-white { left: calc((1920px - var(--opening-width)) / 2); top: calc((1080px - var(--opening-height)) / 2); width: var(--opening-width); height: var(--opening-height); right: auto; bottom: auto; }
+[data-layout="opening"] .scan { transform: scale(var(--opening-scan-scale)); transform-origin: center; }
+[data-layout="opening"][data-opening-portrait="true"] :is(.access-text, .auth-status) { font-size: 36px; }
+[data-layout="opening"][data-opening-portrait="true"] .scan > span { font-size: 52px !important; letter-spacing: 1px !important; }
+[data-layout="opening"] .archive-callout { left: 50.520833%; width: 49.479167%; }
+[data-layout="opening"] .file-title { font-size: clamp(22px, 2vw, 32px); }
+[data-mobile-boot="true"] [data-layout="opening"] .powered { left: var(--edge); right: auto; bottom: 50px; }
+
+// ───── 原 src/responsive.css:18-19  开场期间的 PWA 提示隐藏 ─────
+.pwa-update-notice[hidden], .pwa-update-notice[inert], [data-mode="boot"] .pwa-update-notice { display: none; }
+#stage[data-pwa-update="true"]:not([data-mode="boot"]) .system-footer { visibility: hidden; }
+
+// ───── 原 src/responsive.css:30-31  移动端开场入口 ─────
+[data-mobile-boot="true"] > .mobile-entry { display: flex; position: absolute; bottom: max(28px, env(safe-area-inset-bottom)); right: max(24px, env(safe-area-inset-right)); align-items: center; gap: 32px; min-height: 48px; padding: 0 16px; font-size: 14px; border-bottom: 1px solid #8e897b; }
+[data-mobile-boot="true"] .skip { display: none; }
+
+// ───── 原 src/responsive.css:48-51  紧凑/竖屏下 brand 与 powered 处理 ─────
+:is([data-layout="compact"], [data-layout="portrait"]) .brand { left: var(--edge); top: var(--top-edge); transform: scale(.48) !important; transform-origin: top left; }
+:is([data-layout="compact"], [data-layout="portrait"]) .system-nav { top: var(--top-edge); right: var(--edge); gap: 18px; }
+:is([data-layout="compact"], [data-layout="portrait"]) .system-nav button { min-height: 44px; min-width: 44px; font-size: 11px; justify-content: center; gap: 7px; }
+:is([data-layout="compact"], [data-layout="portrait"]) :is(.key, .powered, .archive-hint, .hover-label) { display: none; }
+
+// ───── 原 src/responsive.css:104-104  竖屏 brand 缩放 ─────
+[data-layout="portrait"] .brand { transform: scale(.42) !important; }
+
+// ───── 原 src/responsive.css:208-208  紧凑版式 brand 缩放 ─────
+  [data-layout="compact"] .brand { transform: scale(.36) !important; }

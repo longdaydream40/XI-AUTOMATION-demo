@@ -1,0 +1,56 @@
+/* WENSI 开场动画 · 黑场覆盖。
+   这一层是加在上游规则之上的：黑底、墨色翻白、文案层关闭、欢迎页扫过反过来。
+   动画代码（boot-motion / boot / boot-*tracks）一行没动，删掉这个文件就回到米色原版。
+   上游：github.com/LBEILC/RhineLabUI @ 12cc5e4（MIT） */
+
+/* ══════════════════════════════════════════════════════════════════════════
+   WENSI 黑场开场
+   开场期间：纯黑底、墨色翻白、除「WELCOME TO / WENSI AUTOMATION」外的文案
+   全部不显示。只覆盖显示层 —— boot-motion.ts / boot.ts 的时间轴与动画逻辑
+   一行没改，删掉这一段就回到原样。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* 1 · 黑底。:has() 顺便把 #viewport 压黑；不支持时 #stage 也仍然盖得住。 */
+body:has(#stage[data-mode="boot"]) { background: #000; }
+body:has(#stage[data-mode="boot"]) #viewport,
+#stage[data-mode="boot"],
+#stage[data-mode="boot"] .boot-background { background: #000; }
+/* 墨色翻白：∞ 标记的 stroke 是 currentColor，从这里继承。 */
+#stage[data-mode="boot"] { color: #f2f0ec; }
+body:has(#stage[data-mode="boot"]) .mobile-entry { color: #f2f0ec; }
+
+/* 2 · 扫描环。源码里写死的 #080a08 与 #fff 在黑底上都要反过来。 */
+#stage[data-mode="boot"] .scan [stroke="#080a08"] { stroke: #f2f0ec; }
+#stage[data-mode="boot"] .scan [stroke="#fff"] { stroke: #6f6f6b; }
+#stage[data-mode="boot"] .scan [fill="#080a08"] { fill: #f2f0ec; }
+#stage[data-mode="boot"] .scan [fill="#fff"] { fill: #6f6f6b; }
+#stage[data-mode="boot"] .scan .scan-core { fill: #f2f0ec; }
+/* 欢迎页那块闪一下的黑底方块，黑底上看不见了，留着不影响别的。 */
+#stage[data-mode="boot"] .welcome-panel { background: #000; }
+
+/* 3 · 文案层全部关掉。这些字由 BootLettering 逐帧写回 DOM，只能在显示层关。 */
+#stage[data-mode="boot"]
+  :is(.brand, .powered, .access-text, .auth-status, .scan > span, .welcome-database) {
+  display: none;
+}
+
+/* 4 · 留下那一句。
+   WELCOME TO 的字色是 JS 逐帧写的（boot.ts:178）：
+     themeAmount > 0 时用 var(--theme-ink)，否则用 rgb(255*(1-welcomeInk))。
+   而 welcomeInk = 1 就是「满墨」——在原来的浅底上是黑字，黑底上就看不见了。
+   所以这一层反转一下：时间轴一行不用动，那一段明暗闪烁也原样保留。 */
+#stage[data-mode="boot"] .welcome-heading { filter: invert(1); }
+
+/* 原来那套是「深墨字 + 黑底亮字从左扫过来」，黑底上要反过来：
+   底层给暗墨、扫过层给亮墨，擦除才读得出逐字点亮。
+   字号从 48 降到 36：RHINE LAB.LLC. 是 14 字，WENSI AUTOMATION 是 16 字，
+   同字号下后者宽出 27%，在 410px 的框里会溢出。 */
+#stage[data-mode="boot"] .welcome-company strong {
+  font-size: 36px;
+  color: #4d4d48;
+  background: transparent;
+}
+#stage[data-mode="boot"] .welcome-company .welcome-highlight {
+  color: #f2f0ec;
+  background: transparent;
+}
