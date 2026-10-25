@@ -1,0 +1,47 @@
+/* XI black opening. Motion geometry stays in reference-film coordinates. */
+:root, body, #viewport, #stage[data-mode="boot"] { background: #000; }
+#stage[data-mode="boot"] { color: #f2f0ec; }
+.tilt-scene { position: absolute; inset: 0; perspective: 1500px; }
+.tilt-plane { position: absolute; inset: 0; transform-style: preserve-3d; --tilt-depth: 0; }
+.scan-depth { position: absolute; inset: 0; transform: translateZ(calc(30px * var(--tilt-depth))); }
+#stage[data-mode="boot"] .scan .orbit-dot { fill: var(--orbit-dot, #b22430); }
+#stage[data-mode="boot"] {
+  --welcome-scale: 1;
+  --welcome-top: calc(540px - 63.5px * var(--welcome-scale));
+}
+#stage[data-mode="boot"] .welcome {
+  top: var(--welcome-top);
+  transform: translateZ(calc(55px * var(--tilt-depth)));
+  height: calc(127px * var(--welcome-scale));
+  filter: none;
+}
+#stage[data-mode="boot"] .welcome-heading {
+  font-size: calc(55px * var(--welcome-scale));
+  line-height: calc(65px * var(--welcome-scale));
+}
+#stage[data-mode="boot"] .welcome-company {
+  top: calc(67px * var(--welcome-scale));
+  height: calc(60px * var(--welcome-scale));
+}
+#stage[data-mode="boot"] .welcome-company strong {
+  inset: 0 auto auto 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 100%;
+  padding: calc(5px * var(--welcome-scale)) 0;
+  font-size: calc(42px * var(--welcome-scale));
+  line-height: calc(50px * var(--welcome-scale));
+  letter-spacing: 0;
+  background: transparent;
+  color: #303030;
+}
+#stage[data-mode="boot"] .welcome-company .welcome-highlight {
+  color: #f2f0ec;
+  background: transparent;
+}
+[data-layout="opening"][data-opening-portrait="true"] .boot {
+  transform: scale(var(--portrait-zoom, 2.4));
+}
+#stage[data-mode="boot"][data-layout="opening"][data-opening-portrait="true"] {
+  --welcome-scale: 0.7;
+}

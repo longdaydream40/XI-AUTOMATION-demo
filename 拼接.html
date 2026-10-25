@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>XI AUTOMATION · 拼接</title>
+<style>
+ html,body{margin:0;height:100%;background:#000;overflow:hidden}
+ iframe{position:fixed;inset:0;width:100%;height:100%;border:0;display:block;visibility:hidden;opacity:0}
+ #error{position:fixed;inset:45% 1rem auto;color:#ddd;text-align:center;font:16px sans-serif;z-index:10}
+</style>
+</head>
+<body>
+<p id="error" role="alert" hidden></p>
+<script>
+// A: portrait + XI deletion, 4.80 s. B: welcome + scan, 6.675 s.
+// ?order=ba reverses the order. ?at=seconds freezes the full sequence.
+// ?cut=seconds overrides only A's cut. R or a click in A replays the whole film.
+const q=new URLSearchParams(location.search);
+const number=(name,fallback)=>{const v=Number(q.get(name));return q.has(name)&&Number.isFinite(v)&&v>=0?v:fallback;};
+const customCut=q.has('cut')?Math.max(.04,Math.min(120,number('cut',4.8))):null;
+const demos={
+ a:{url:q.get('a')||'index-bw.html',length:customCut??4.8,param:u=>({f:String(u*25)})},
+ b:{url:q.get('b')||'XI-开场动画/dist/index.html',length:6.675,param:u=>({t:String(u),freeze:'1'})}
+};
+const order=q.get('order')==='ba'?['b','a']:['a','b'];
+const sequence=order.map(key=>({...demos[key],key}));
+const state={ready:false,active:order[0],playing:false,transitions:0,replays:0,error:''};
+window.__xiSequence=state;
+function urlFor(src,params){const u=new URL(src,location.href);for(const [k,v]of Object.entries(params))u.searchParams.set(k,v);return u;}
+function frame(src){const el=document.createElement('iframe');el.title='XI AUTOMATION 动画';el.src=src;el.setAttribute('scrolling','no');return el;}
+function error(message){state.error=message;const el=document.getElementById('error');el.textContent=message;el.hidden=false;}
+if(q.has('at')){
+ let at=number('at',0),demo=sequence[0];
+ if(at>=demo.length){at-=demo.length;demo=sequence[1];}
+ const el=frame(urlFor(demo.url,demo.param(Math.min(at,demo.length))));
+ el.style.visibility='visible';el.style.opacity='1';document.body.append(el);
+ state.active=demo.key;
+}else{
+ let raf=0,active=0,transition=null,clockOrigin=null,elapsed=0,run=0;
+ const pages=sequence.map(d=>({demo:d,el:frame(urlFor(d.url,{embedded:'1'})),ready:false,origin:new URL(d.url,location.href).origin}));
+ function send(page,type){page.el.contentWindow.postMessage({channel:'xi-opening',type,run},page.origin==='null'?'*':page.origin);}
+ function schedule(){if(!raf&&!document.hidden)raf=requestAnimationFrame(tick);}
+ function tick(now){
+  raf=0;
+  if(clockOrigin===null)clockOrigin=now;
+  const dt=Math.max(0,now-clockOrigin);clockOrigin=now;
+  if(state.playing)elapsed+=dt/1000;
+  if(transition){
+   transition.elapsed+=dt;
+   const p=Math.min(1,transition.elapsed/120);
+   pages[transition.old].el.style.opacity=String(1-p);
+   pages[active].el.style.opacity=String(p);
+   if(p===1){pages[transition.old].el.style.visibility='hidden';transition=null;}
+  }
+  if(state.playing && pages[active].demo.key==='a' && customCut!==null && elapsed>=customCut)complete();
+  if(transition || (state.playing && pages[active].demo.key==='a' && customCut!==null))schedule();
+ }
+ function activate(index){
+  const old=active;active=index;elapsed=0;clockOrigin=null;
+  state.active=pages[index].demo.key;state.playing=true;
+  pages[index].el.style.visibility='visible';pages[index].el.style.pointerEvents='auto';
+  if(index!==old){
+   send(pages[old],'stop');pages[old].el.style.pointerEvents='none';
+   transition={old,elapsed:0};state.transitions++;schedule();
+  }else pages[index].el.style.opacity='1';
+  send(pages[index],'start');
+ }
+ function complete(){
+  if(!state.playing)return;
+  if(active===0)activate(1);
+  else{state.playing=false;send(pages[active],'stop');}
+ }
+ function replay(){
+  if(!pages.every(p=>p.ready))return;
+  run++;cancelAnimationFrame(raf);raf=0;transition=null;clockOrigin=null;elapsed=0;
+  for(const page of pages){send(page,'stop');page.el.style.visibility='hidden';page.el.style.opacity='0';page.el.style.pointerEvents='none';}
+  active=0;state.replays++;activate(0);
+ }
+ function message(e){
+  const index=pages.findIndex(p=>p.el.contentWindow===e.source&&p.origin===e.origin);
+  if(index<0||e.data?.channel!=='xi-opening')return;
+  const page=pages[index],type=e.data.type;
+  if(type!=='ready'&&e.data.run!==run)return;
+  if(type==='error'){error('动画资源未能载入，请刷新重试。');return;}
+  if(type==='ready'){
+   page.ready=true;
+   if(pages.every(p=>p.ready)&&!state.ready){state.ready=true;clearTimeout(loadTimeout);activate(0);}
+  }else if(type==='replay')replay();
+  else if(index===active&&type==='started'){
+   clockOrigin=null;
+   if(page.demo.key==='a'&&customCut!==null)schedule();
+  }else if(index===active&&type==='done'){
+   // An explicit cut may intentionally hold A's final frame longer.
+   if(page.demo.key!=='a'||customCut===null)complete();
+  }
+ }
+ function visibility(){
+  clockOrigin=null;
+  if(document.hidden){cancelAnimationFrame(raf);raf=0;}
+  else if(transition||(state.playing&&pages[active].demo.key==='a'&&customCut!==null))schedule();
+ }
+ addEventListener('message',message);
+ addEventListener('keydown',e=>{if(e.key.toLowerCase()==='r'&&!e.repeat&&!e.ctrlKey&&!e.metaKey&&!e.altKey)replay();});
+ document.addEventListener('visibilitychange',visibility);
+ const loadTimeout=setTimeout(()=>error('动画载入超时，请检查资源路径后刷新。'),15000);
+ for(const page of pages)document.body.append(page.el);
+ addEventListener('pagehide',()=>{cancelAnimationFrame(raf);clearTimeout(loadTimeout);for(const page of pages)send(page,'stop');},{once:true});
+}
+</script>
+</body>
+</html>

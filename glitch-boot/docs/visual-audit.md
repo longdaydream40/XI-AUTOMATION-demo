@@ -1,3 +1,7 @@
+> **历史文档。** 本报告审计的是改名与重构之前的版本（当时屏幕上写 `WENSI` / `AURORA`，
+> 头像施工在浏览器里做）。当前实现见 `XI-开场动画/README.md` 与 `glitch-boot/README.md`，
+> 结论不要直接套用到新版本。
+
 # 视觉审计：开场动画两版时间轴
 
 审计对象：`/home/xuan/设计/index.html`（MONO）、`/home/xuan/设计/index-rg.html`（DUOTONE）

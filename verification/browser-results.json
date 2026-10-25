@@ -1,0 +1,111 @@
+{
+  "screenshots": [
+    "头像-桌面",
+    "头像-手机",
+    "光标-删除"
+  ],
+  "checks": {
+    "头像-桌面": {
+      "pending": [],
+      "canvas": [
+        892,
+        892
+      ],
+      "text": "XI\n   AUTOMATION",
+      "overflow": false
+    },
+    "头像-手机": {
+      "pending": [],
+      "canvas": [
+        250,
+        250
+      ],
+      "text": "XI\n   AUTOMATION",
+      "overflow": false
+    },
+    "光标-删除": {
+      "pending": [],
+      "canvas": [
+        892,
+        892
+      ],
+      "text": "XI\n   AUTOMATION",
+      "overflow": false
+    },
+    "caret_resize_alignment": true,
+    "deletion_trace": {
+      "step_frames": 10,
+      "boxes": [
+        {
+          "l": 988.796875,
+          "r": 1086
+        },
+        {
+          "l": 1086,
+          "r": 1125.78125
+        }
+      ]
+    },
+    "deletion_char1": {
+      "mid_frame": 100,
+      "mid_opacity": 0.3936,
+      "caret_at_zero": 1086,
+      "target": 1086
+    },
+    "deletion_char0": {
+      "mid_frame": 110,
+      "mid_opacity": 0.3936,
+      "caret_at_zero": 989,
+      "target": 988.796875
+    },
+    "deletion_caret_monotonic": true,
+    "tilt": {
+      "plane": "matrix3d(0.988362, 0.0159012, 0.15129, 0, 0, 0.994522, -0.104528, 0, -0.152123, 0.103312, 0.982947, 0, 0, 0, 0, 1)",
+      "depth": "0.9879921417816147",
+      "pending": []
+    },
+    "tilt_return_reduced_motion": true,
+    "scan_tilt_disabled": true,
+    "20_portrait_replays": 1,
+    "20_parent_replays": {
+      "state": {
+        "ready": true,
+        "active": "b",
+        "playing": true,
+        "transitions": 2,
+        "replays": 20,
+        "error": ""
+      },
+      "iframes": 2,
+      "visible": 1,
+      "childPending": [
+        [],
+        [
+          "A"
+        ]
+      ]
+    },
+    "iframe_keyboard_replay": true,
+    "delayed_readiness_times": [
+      0,
+      0
+    ],
+    "file_portrait": true
+  },
+  "environment": {
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/149.0.7827.55",
+      "revision": "@3188f8a607ae7e067593be8aab7f02d2451fec07",
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36",
+      "jsVersion": "14.9.207.21"
+    },
+    "load_average": [
+      1.3408203125,
+      1.21435546875,
+      1.07763671875
+    ],
+    "renderer": "ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)"
+  },
+  "runtime_errors": []
+}
